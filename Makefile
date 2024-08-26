@@ -1,4 +1,4 @@
-NAME          = act_interface
+NAME          = interpret_rect
 DEPEND        = pgen phy
 
 SRCDIR        = $(NAME)
@@ -31,9 +31,9 @@ tests: lib $(TEST_TARGET)
 
 grammar: $(PSOURCES) 
 
-act_interface/conf.cpp: peg/conf.peg
+$(NAME)/conf.cpp: peg/conf.peg
 	../pgen/pgen-linux $<
-	mv peg/*.cpp peg/*.h act_interface
+	mv peg/*.cpp peg/*.h $(NAME)
 
 $(TARGET): $(OBJECTS)
 	ar rvs $(TARGET) $(OBJECTS)
