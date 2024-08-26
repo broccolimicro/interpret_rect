@@ -1,5 +1,7 @@
 #include "RectFile.h"
 
+#include <sys/stat.h>
+
 void emitRect(FILE *fptr, const ActConfig &cfg, const Rect &rect, const Layout &layout, string mtrl) {
 	fprintf(fptr, "rect %s %s %d %d %d %d\n", rect.net < 0 ? "#" : cfg.demangleName(layout.nets[rect.net]).c_str(), mtrl.c_str(), rect.ll[0], rect.ll[1], rect.ur[0], rect.ur[1]);
 }
@@ -36,6 +38,23 @@ void emitRect(FILE *fptr, const ActConfig &cfg, const Layout &layout) {
 		}
 
 		emitRect(fptr, cfg, result, layout, layer->first);
+	}
+}
+
+void emitRect(string path, const ActConfig &cfg, const Library &library, set<string> cellNames) {
+	mkdir(path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+	for (auto cell = library.cells.begin(); cell != library.cells.end(); cell++) {
+		if (cellNames.empty() or cellNames.find(cell->name) != cellNames.end()) {
+			string fpath = path;
+			if (path.back() != '/') {
+				fpath += "/";
+			}
+			fpath += cell->name + ".rect";
+			printf("creating %s\n", fpath.c_str());
+			FILE *fptr = fopen(fpath.c_str(), "w");
+			emitRect(fptr, cfg, *cell);
+			fclose(fptr);
+		}
 	}
 }
 
