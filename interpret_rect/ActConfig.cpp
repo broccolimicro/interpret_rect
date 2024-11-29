@@ -1,34 +1,30 @@
 #include "ActConfig.h"
+#include <filesystem>
+
+using namespace std;
 
 namespace act {
 
-void ActConfig::loadValue(const phy::Tech &tech, pgen::conf_t lang, pgen::lexer_t &lexer, pgen::token_t &value, string name, map<string, string> &mtrlMap) {
-	string kind = lexer.read(value.tokens[0].begin, value.tokens[0].end);
-	string attr = lexer.read(value.tokens[1].begin, value.tokens[1].end);
-
-	if (kind == "string") {
-		if (attr == "mangle_chars") {
-			mangleChars = lexer.read(value.tokens[2].begin, value.tokens[2].end);
-			mangleChars = mangleChars.substr(1, mangleChars.size()-2);
-		} else if (attr == "mangle_letter") {
-			mangleLetter = lexer.read(value.tokens[2].begin, value.tokens[2].end);
-			mangleLetter = mangleLetter.substr(1, mangleLetter.size()-2);
-		} else if (name.rfind(".vias", 0) == 0 and attr.rfind("_name") != string::npos) {
-			attr = attr.substr(0, attr.rfind("_"));
-			string str = lexer.read(value.tokens[2].begin, value.tokens[2].end);
-			str = str.substr(1, str.size()-2);
-			mtrlMap[attr] = str;
-		} else if (name.rfind(".materials.metal", 0) == 0 and attr[0] == 'm' and attr.find("_") == string::npos) {
-			string str = lexer.read(value.tokens[2].begin, value.tokens[2].end);
-			str = str.substr(1, str.size()-2);
-			printf("found %s -> %s\n", str.c_str(), attr.c_str());
-			mtrlMap[str] = attr;
+void ActConfig::loadBlock(const phy::Tech &tech, const parse_act::block &syntax, string parent, map<string, string> &mtrlMap) {
+	if (syntax.kind == "begin") {
+		loadSection(tech, syntax.sub, parent + "." + syntax.name);
+	} else if (syntax.kind == "string") {
+		if (syntax.name == "mangle_chars") {
+			mangleChars = syntax.values[0].substr(1, mangleChars.size()-2);
+		} else if (syntax.name == "mangle_letter") {
+			mangleLetter = syntax.values[0].substr(1, mangleLetter.size()-2);
+		} else if (parent.rfind(".vias", 0) == 0 and syntax.name.rfind("_name") != string::npos) {
+			string name = syntax.name.substr(0, syntax.name.rfind("_"));
+			mtrlMap[name] = syntax.values[0].substr(1, syntax.values[0].size()-2);
+		} else if (parent.rfind(".materials.metal", 0) == 0 and syntax.name[0] == 'm' and syntax.name.find("_") == string::npos) {
+			string str = syntax.values[0].substr(1, syntax.values[0].size()-2);
+			printf("found %s -> %s\n", str.c_str(), syntax.name.c_str());
+			mtrlMap[str] = syntax.name;
 		}
-	} else if (kind == "string_table" and (name.rfind(".materials", 0) == 0 or name.rfind(".vias", 0) == 0) and attr.rfind("gds") != string::npos) {
+	} else if (syntax.kind == "string_table" and (parent.rfind(".materials", 0) == 0 or parent.rfind(".vias", 0) == 0) and syntax.name.rfind("gds") != string::npos) {
 		vector<int> layers;
-		for (auto tok = value.tokens.begin()+2; tok != value.tokens.end(); tok++) {
-			string layer = lexer.read(tok->begin, tok->end);
-			layer = layer.substr(1, layer.size()-2);
+		for (auto value = syntax.values.begin(); value != syntax.values.end(); value++) {
+			string layer = value->substr(1, value->size()-2);
 			int idx = tech.findPaint(layer);
 			if (idx >= 0) {
 				layers.push_back(idx);
@@ -37,9 +33,9 @@ void ActConfig::loadValue(const phy::Tech &tech, pgen::conf_t lang, pgen::lexer_
 		
 		if (not layers.empty()) {
 			string mtrl;
-			if (attr.rfind("_gds") != string::npos) {
-				mtrl = attr.substr(0, attr.rfind("_"));
-				if (name.rfind(".vias", 0) == 0) {
+			if (syntax.name.rfind("_gds") != string::npos) {
+				mtrl = syntax.name.substr(0, syntax.name.rfind("_"));
+				if (parent.rfind(".vias", 0) == 0) {
 					for (auto mat = mtrls.begin(); mat != mtrls.end(); mat++) {
 						if (mat->first == mtrl) {
 							layers.reserve(layers.size()+mat->second.size());
@@ -53,7 +49,7 @@ void ActConfig::loadValue(const phy::Tech &tech, pgen::conf_t lang, pgen::lexer_
 					mtrl = pos->second;
 				}
 			} else {
-				mtrl = name.substr(name.rfind(".")+1);
+				mtrl = parent.substr(parent.rfind(".")+1);
 			}
 
 			mtrls.push_back(pair<string, vector<int> >(mtrl, layers));
@@ -61,53 +57,40 @@ void ActConfig::loadValue(const phy::Tech &tech, pgen::conf_t lang, pgen::lexer_
 	} 
 }
 
-void ActConfig::loadBlock(const phy::Tech &tech, pgen::conf_t lang, pgen::lexer_t &lexer, pgen::token_t &block, string name) {
+void ActConfig::loadSection(const phy::Tech &tech, const parse_act::section &syntax, string parent) {
 	map<string, string> mtrlMap;
-	for (auto tok = block.tokens.begin(); tok != block.tokens.end(); tok++) {
-		if (tok->type == lang.TABLE) {
-			loadValue(tech, lang, lexer, *tok, name, mtrlMap);
-		} else if (tok->type == lang.VALUE) {
-			loadValue(tech, lang, lexer, *tok, name, mtrlMap);
-		} else if (tok->type == lang.SECTION) {
-			string sub = name + "." + lexer.read(tok->tokens[0].begin, tok->tokens[0].end);
-			loadBlock(tech, lang, lexer, tok->tokens[1], sub);
-		} else if (tok->type == lang.INCLUDE) {
-			string path = lexer.read(tok->tokens[0].begin, tok->tokens[0].end);
-			path = path.substr(1, path.size()-2);
-			path = replaceEnvVariables(path);
-			if (not load(tech, path)) {
-				printf("error loading: '%s'\n", path.c_str());
-			}
+	for (auto incl = syntax.includes.begin(); incl != syntax.includes.end(); incl++) {
+		string path = *incl;
+		path = path.substr(1, path.size()-2);
+		path = replaceEnvVariables(path);
+		if (not load(tech, path)) {
+			printf("error loading: '%s'\n", path.c_str());
 		}
+	}
+
+	for (auto blk = syntax.blocks.begin(); blk != syntax.blocks.end(); blk++) {
+		loadBlock(tech, *blk, parent, mtrlMap);
 	}
 }
 
 bool ActConfig::load(const phy::Tech &tech, string path) {
-	// Initialize the grammar
-	pgen::grammar_t gram;
-	pgen::conf_t lang;
-	lang.load(gram);
+	filesystem::path current = filesystem::current_path();
 
-	// Load the file into the lexer
-	pgen::lexer_t lexer;
-	if (not lexer.open(path)) {
-		printf("file not found: '%s'\n", path.c_str());
-		return false;
+	configuration config;
+	config.set_working_directory(current.string());
+
+	tokenizer tokens;
+
+	parse_act::section::register_syntax(tokens);
+	config.load(tokens, path, "");
+
+	tokens.increment(true);
+	tokens.expect<parse_act::section>();
+	if (tokens.decrement(__FILE__, __LINE__))
+	{
+		parse_act::section syntax(tokens);
+		loadSection(tech, syntax, "");
 	}
-
-	// Parse the file with the grammar
-	pgen::parsing ast = gram.parse(lexer);
-	if (ast.msgs.size() != 0) {
-		// there were parsing errors, print them out
-		for (int i = 0; i < (int)ast.msgs.size(); i++) {
-			cout << ast.msgs[i];
-		}
-		printf("error loading: '%s'\n", path.c_str());
-		return false;
-	}
-
-	// no errors, print the parsed abstract syntax tree
-	loadBlock(tech, lang, lexer, ast.tree.tokens[0], "");
 
 	return true;
 }
@@ -171,6 +154,5 @@ string ActConfig::demangleName(string name) const {
 	}
 	return result.str();
 }
-
 
 }

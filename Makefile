@@ -1,5 +1,5 @@
 NAME          = interpret_rect
-DEPEND        = pgen phy
+DEPEND        = parse_act parse common phy
 
 SRCDIR        = $(NAME)
 TESTDIR       = tests
@@ -7,11 +7,8 @@ GTEST        := ../../googletest
 GTEST_I      := -I$(GTEST)/googletest/include -I.
 GTEST_L      := -L$(GTEST)/build/lib -L.
 
-CXXFLAGS	    = -std=c++14 -O2 -g -Wall -fmessage-length=0 $(DEPEND:%=-I../%) -I.
+CXXFLAGS	    = -std=c++17 -O2 -g -Wall -fmessage-length=0 $(DEPEND:%=-I../%) -I.
 LDFLAGS		    =  
-
-PGRAM        := $(wildcard peg/*.peg)
-PSOURCES     := $(PGRAM:peg/%.peg=ruler/%.cpp)
 
 SOURCES	     := $(shell mkdir -p $(SRCDIR); find $(SRCDIR) -name '*.cpp')
 OBJECTS	     := $(SOURCES:%.cpp=build/%.o)
@@ -28,12 +25,6 @@ all: lib
 lib: $(TARGET)
 
 tests: lib $(TEST_TARGET)
-
-grammar: $(PSOURCES) 
-
-$(NAME)/conf.cpp: peg/conf.peg
-	../pgen/pgen-linux $<
-	mv peg/*.cpp peg/*.h $(NAME)
 
 $(TARGET): $(OBJECTS)
 	ar rvs $(TARGET) $(OBJECTS)

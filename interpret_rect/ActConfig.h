@@ -1,11 +1,12 @@
 #pragma once
 
-#include "conf.h"
 #include <string>
 #include <map>
 #include <vector>
 
 #include <phy/Tech.h>
+#include <parse_act/block.h>
+#include <parse_act/section.h>
 
 using namespace std;
 
@@ -16,8 +17,8 @@ struct ActConfig {
 	string mangleLetter;
 	vector<pair<string, vector<int> > > mtrls;
 
-	void loadValue(const phy::Tech &tech, pgen::conf_t lang, pgen::lexer_t &lexer, pgen::token_t &value, string name, map<string, string> &mtrlMap);
-	void loadBlock(const phy::Tech &tech, pgen::conf_t lang, pgen::lexer_t &lexer, pgen::token_t &block, string name);
+	void loadBlock(const phy::Tech &tech, const parse_act::block &syntax, string parent, map<string, string> &mtrlMap);
+	void loadSection(const phy::Tech &tech, const parse_act::section &syntax, string parent);
 	bool load(const phy::Tech &tech, string path);
 
 	string replaceEnvVariables(string input) const;
